@@ -1,0 +1,19 @@
+{
+    "name": "eru123/router",
+    "description": "A PHP Library for handling Routes using a Parent-Child Model",
+    "type": "library",
+    "license": "Apache-2.0",
+    "autoload": {
+        "psr-4": {
+            "eru123\\Router\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "eru123",
+            "email": "39824083+eru123@users.noreply.github.com"
+        }
+    ],
+    "minimum-stability": "stable",
+    "require": {}
+}
