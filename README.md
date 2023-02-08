@@ -118,5 +118,9 @@ $mutiplyHandler = function ($params) {
 
 $router->get('/multiply/{a}/{b}', $numberMiddleware,  $convertToIntMiddleware, $mutiplyHandler);
 
+// Alternative structure for Pipelines
+$pipes = [$numberMiddleware,  $convertToIntMiddleware, $mutiplyHandler];
+$router->get('/multiply2/{a}/{b}', ...$pipes);
+
 $router->run();
 ```
