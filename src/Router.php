@@ -1,262 +1,175 @@
 <?php
 
-namespace eru123\Router;
-
-use Exception;
-use Error;
+namespace eru123\router;
 
 class Router
 {
-    /**
-     * Routes array for storing all routes
-     * @var array
-     */
-    private $routes = array();
-    /**
-     * Base path for current router instance and it's children
-     * @var string
-     */
-    private $base_path = '';
-    /**
-     * Callback for exception
-     * @var callable|null
-     */
-    private $exception_cb = null;
-    /**
-     * Callback for error
-     * @var callable|null
-     */
-    private $error_cb = null;
-    /**
-     * Sets the default callback for exception and error
-     * @return static
-     */
+    protected $routes = [];
+    protected $static_routes = [];
+    protected $fallback_routes = [];
+    protected $state_class = RouteState::class;
+    protected $error_handler = null;
+    protected $response_handler = null;
+    protected $base = '';
+    protected $is_debug = false;
+    protected $debug_data = [];
+
     public function __construct()
     {
-        $default_callback = function ($e) {
-            header('Content-Type: application/json');
-            $http_code = is_numeric($e->getCode()) ? $e->getCode() : 500;
-            http_response_code($http_code);
-
-            $res = [
-                'code' => $e->getCode(),
-                'error' => $e->getMessage(),
-            ];
-
-            echo json_encode($res);
-            exit;
-        };
-
-        $this->exception_cb = $default_callback;
-        $this->error_cb = $default_callback;
     }
 
-    /**
-     * Returns the routes array
-     * @return array
-     */
-    public function routes()
+    public function debug($debug = true)
     {
-        return $this->routes;
-    }
-    /**
-     * Base path setter and getter
-     * @param string|null $base The base path of current router instance
-     * @return static|string Set the base path and return the instance if $base is not null, otherwise return the base path
-     */
-    public function base(string $base = null)
-    {
-        if ($base == null) {
-            return $this->base_path;
-        }
-
-        $this->base_path = rtrim($base, '/');
-        return $this;
-    }
-    /**
-     * Request handler
-     * @param string $method The request method (GET, POST, PUT, DELETE, PATCH, etc.)
-     * @param string $path The request path
-     * @param array $pipes The pipes to be executed
-     * @return static
-     */
-    public function request(string $method, string $path, ...$pipes)
-    {
-        $route = [];
-        $path = $this->base_path . '/' . trim($path, '/');
-        $rgx = preg_replace('/\//', "\\\/", $path);
-        $rgx = preg_replace('/\{([a-zA-Z0-9]+)\}/', '(?P<$1>[a-zA-Z0-9]+)', $rgx);
-        $rgx = '/^' . $rgx . '$/';
-        $route['path'] = $path;
-        $route['needle'] = $rgx;
-        $route['method'] = strtoupper($method);
-        $route['pipes'] = $pipes;
-        $route['match'] = false;
-        $this->routes[] = $route;
+        $this->is_debug = $debug;
         return $this;
     }
 
-    /**
-     * Alias of request for GET method
-     * @param string $path The request path
-     * @param array $pipes The pipes to be executed
-     * @return static
-     */
-    public function get(string $path, ...$pipes)
+    public function base($base)
     {
-        return $this->request('GET', $path, ...$pipes);
+        $this->base = $base;
     }
-    /**
-     * Alias of request for POST method
-     * @param string $path The request path
-     * @param array $pipes The pipes to be executed
-     * @return static
-     */
-    public function post(string $path, ...$pipes)
-    {
-        return $this->request('POST', $path, ...$pipes);
-    }
-    /**
-     * Add a child router instance to current router instance
-     * @param static $router The child router instance or the path to the router file
-     * @return static
-     */
-    public function add($router)
-    {
-        $routes = $router->routes();
-        foreach ($routes as $k => $route) {
-            $route['path'] = $this->base_path . '/' . trim($route['path'], '/');
-            $rgx = preg_replace('/\//', "\\\/", $route['path']);
-            $rgx = preg_replace('/\{([a-zA-Z0-9]+)\}/', '(?P<$1>.*)', $rgx);
-            $rgx = '/^' . $rgx . '$/';
-            $route['needle'] = $rgx;
-            $routes[$k] = $route;
-        }
 
-        $this->routes = array_merge($this->routes, $routes);
+    public function state($state_class = null)
+    {
+        if (!empty($state_class)) {
+            $this->state_class = $state_class;
+        }
+        return $this->state_class;
+    }
+
+    public function error($error_handler = null)
+    {
+        if (!empty($error_handler)) {
+            $this->error_handler = $error_handler;
+        }
+        return $this->error_handler;
+    }
+
+    public function response($response_handler = null)
+    {
+        if (!empty($response_handler)) {
+            $this->response_handler = $response_handler;
+        }
+        return $this->response_handler;
+    }
+
+    public function request($method, $url, ...$callbacks)
+    {
+        $url = trim($this->base, '/') . '/' . ltrim($url, '/');
+        $this->routes[] = new Route($method, $url, ...$callbacks);
         return $this;
     }
-    /**
-     * Extract params defined in the path
-     * @param array $params The params to be extracted
-     * @return array The extracted params
-     */
-    private static function extract_params($params)
+
+    public function get($url, ...$callbacks)
     {
-        if (!is_array($params)) {
-            return [];
-        }
-
-        $res = [];
-
-        foreach ($params as $k => $v) {
-            if (!is_numeric($k)) {
-                $res[$k] = urldecode($v);
-            }
-        }
-
-        return $res;
+        return $this->request('GET', $url, ...$callbacks);
     }
-    /**
-     * Execute the router 
-     * @return mixed The result of the last pipe
-     */
-    private function exec()
+
+    public function post($url, ...$callbacks)
     {
-        $method = $_SERVER['REQUEST_METHOD'];
-        $path = $_SERVER['REQUEST_URI'];
-        foreach ($this->routes as $route) {
-            if ($route['method'] == $method) {
-                $is_match = preg_match($route['needle'], $path, $params);
-                $params = self::extract_params($params);
+        return $this->request('POST', $url, ...$callbacks);
+    }
 
-                if ($is_match) {
-                    $pipes = $route['pipes'];
+    public function put($url, ...$callbacks)
+    {
+        return $this->request('PUT', $url, ...$callbacks);
+    }
 
-                    if (count($pipes) == 0) {
-                        throw new Exception("Route has no handler", 500);
-                    }
+    public function delete($url, ...$callbacks)
+    {
+        return $this->request('DELETE', $url, ...$callbacks);
+    }
 
-                    $fpipe = array_shift($pipes);
-                    $res = $fpipe($params);
+    public function patch($url, ...$callbacks)
+    {
+        return $this->request('PATCH', $url, ...$callbacks);
+    }
 
-                    if (!empty($pipes)) {
-                        $res = is_null($res) ? [$params] : [$res];
+    public function any($url, ...$callbacks)
+    {
+        return $this->request('ANY', $url, ...$callbacks);
+    }
 
-                        foreach ($pipes as $i => $pipe) {
-                            $res = call_user_func_array($pipe, $res);
-                            if ($i < count($pipes) - 1) {
-                                $res = is_null($res) ? [$params] : [$res];
-                            }
-                        }
-                    }
+    public function fallback($url, ...$callbacks)
+    {
+        $url = trim($this->base, '/') . '/' . ltrim($url, '/');
+        $this->fallback_routes[] = new Route('FALLBACK', $url, ...$callbacks);
+        return $this;
+    }
 
-                    return $res;
+    public function static($url, $path = '/', ...$callbacks)
+    {
+        $url = $this->base . $url;
+        array_unshift($callbacks, function (&$state) use ($path){
+            $ds = DIRECTORY_SEPARATOR;
+            $path = str_replace('/', $ds, $path);
+            $path = str_replace('\\', $ds, $path);
+            $path = rtrim($path, $ds) . $ds;
+            $file = $state->params['file'];
+            $file = str_replace('/', $ds, $file);
+            $file = str_replace('\\', $ds, $file);
+            $file = ltrim($file, $ds);
+            $file = preg_replace("/$ds?\.$ds/", '', $file);
+            $file = $path . $file;
+            $state->filepath = $file;
+            $state->next();
+        });
+        array_push($callbacks, function (&$state) {
+            $file = $state->filepath;
+            if (file_exists($file)) {
+                $file = fopen($file, 'r');
+                header('Content-Type: application/octet-stream');
+                header('Content-Disposition: attachment; filename="' . basename($file) . '"');
+                while (!feof($file)) {
+                    print fread($file, 1024 * 8);
+                    flush();
                 }
+                fclose($file);
+                exit;
             }
-        }
+        });
+        $this->static_routes[] = new Route('STATIC', $url, ...$callbacks);
+        return $this;
+    }
 
-        throw new Exception("Route not found", 404);
-    }
-    /**
-     * Set the exception callback
-     * @param callable $fn
-     * @return void
-     */
-    public function exception($fn)
-    {
-        $this->exception_cb = $fn;
-    }
-    /**
-     * Set the error callback
-     * @param callable $fn
-     * @return void
-     */
-    public function error($fn)
-    {
-        $this->error_cb = $fn;
-    }
-    /**
-     * Find the route that matches the request
-     * @return never
-     */
     public function run()
     {
-        $response = function ($res, $extra = null) {
-            if (is_array($res)) {
-                header('Content-Type: application/json');
-                http_response_code(200);
-                echo json_encode($res);
-                exit(0);
-            } else if (is_null($res)) {
-                http_response_code(204);
-                exit(0);
-            }
+        $routes = array_merge($this->static_routes, $this->routes, $this->fallback_routes);
 
-            echo $res;
-            exit(0);
-        };
-
-        try {
-            $res = $this->exec();
-            $response($res);
-        } catch (Exception $e) {
-            $fn = $this->exception_cb;
-            if (is_callable($fn)) {
-                $res = call_user_func_array($fn, [$e]);
-                $response($res);
-            }
-            echo $e->getMessage();
-        } catch (Error $e) {
-            $fn = $this->error_cb;
-            $e = new Error($e->getMessage(), 500, $e);
-            if (is_callable($fn)) {
-                $res = call_user_func_array($fn, [$e]);
-                $response($res);
-            }
-            echo $e->getMessage();
+        if ($this->is_debug) {
+            $this->debug_data['routes'] = array_map(function ($route) {
+                return $route->info();
+            }, $routes);
         }
 
-        exit(0);
+        foreach ($routes as $route) {
+            if (!($route instanceof Route)) {
+                continue;
+            }
+
+            if ($route->matched()) {
+                if ($this->is_debug) {
+                    $this->debug_data['route'] = $route->info();
+                    $route->error($this->error_handler)
+                        ->response($this->response_handler)
+                        ->state($this->state_class)
+                        ->debug($this->is_debug)
+                        ->debug_data($this->debug_data)
+                        ->exec();
+                    continue;
+                }
+
+                $route->error($this->error_handler)
+                    ->response($this->response_handler)
+                    ->state($this->state_class)
+                    ->debug(false)
+                    ->debug_data([])
+                    ->exec();
+            }
+        }
+        header('Content-Type: application/json');
+        echo json_encode($this->debug_data, JSON_PRETTY_PRINT);
+
+        exit;
     }
 }

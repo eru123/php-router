@@ -5,7 +5,7 @@
     "license": "Apache-2.0",
     "autoload": {
         "psr-4": {
-            "eru123\\Router\\": "src/"
+            "eru123\\router\\": "src/"
         }
     },
     "authors": [

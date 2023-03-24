@@ -2,7 +2,8 @@
 
 namespace eru123\router;
 
-class URL {
+class URL
+{
 
     /**
      * check if URL matched with regex
@@ -12,7 +13,7 @@ class URL {
      */
     public static function matched($rgx, $url = null)
     {
-        $urlp = !empty($url)? static::sanitize_uri($url) : static::current();
+        $urlp = !empty($url) ? static::sanitize_uri($url) : static::current();
         $rgxp = static::create_param_regex($rgx);
         return preg_match($rgxp, $urlp);
     }
@@ -25,10 +26,10 @@ class URL {
      */
     public static function params($rgx, $url = null)
     {
-        $urlp = !empty($url)? static::sanitize_uri($url) : static::current();
+        $urlp = !empty($url) ? static::sanitize_uri($url) : static::current();
         $rgxp = static::create_param_regex($rgx);
         preg_match($rgxp, $urlp, $matches);
-        return array_filter($matches, function($k) {
+        return array_filter($matches, function ($k) {
             return !is_numeric($k);
         }, ARRAY_FILTER_USE_KEY);
     }
@@ -66,5 +67,60 @@ class URL {
         $uri = preg_replace('/\?.*/', '', $uri);
         $uri = trim($uri, '/');
         return $uri;
+    }
+
+    /**
+     * Create FallBack URL for a Path
+     * @param string $path Path to create fallback URL
+     * @return string
+     */
+    public static function dir($path)
+    {
+        $url = static::sanitize_uri($path);
+        $url = rtrim($url, '/') . '\/(?P<file>[^\/\?]+)';
+        return $url;
+    }
+
+    /**
+     * create DIR param regex
+     * @param string $url URL to create DIR param regex
+     * @return string
+     */
+    public static function create_dir_param_regex($url)
+    {
+        $url = static::sanitize_uri($url);
+        $rgxp = '/\$([a-zA-Z0-9_]+)/';
+        $rgx = preg_replace('/\//', "\\\/", $url);
+        $rgx = preg_replace($rgxp, '(?P<$1>[^\/\?]+)', $rgx);
+        return '/^' . $rgx . '\/(?P<file>[^\/\?]+)$/';
+    }
+
+    /**
+     * DIR matched
+     * @param string $rgx URL Regex
+     * @param ?string $url URL to check, if null, it will use current URL
+     * @return bool
+     */
+    public static function dir_matched($rgx, $url = null)
+    {
+        $urlp = !empty($url) ? static::sanitize_uri($url) : static::current();
+        $rgxp = static::create_dir_param_regex($rgx);
+        return preg_match($rgxp, $urlp);
+    }
+
+    /**
+     * Extract DIR parameters from URL
+     * @param string $rgx URL Regex
+     * @param ?string $url URL to check, if null, it will use current URL
+     * @return array
+     */
+    public static function dir_params($rgx, $url = null)
+    {
+        $urlp = !empty($url) ? static::sanitize_uri($url) : static::current();
+        $rgxp = static::create_dir_param_regex($rgx);
+        preg_match($rgxp, $urlp, $matches);
+        return array_filter($matches, function ($k) {
+            return !is_numeric($k);
+        }, ARRAY_FILTER_USE_KEY);
     }
 }
