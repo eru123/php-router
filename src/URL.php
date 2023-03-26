@@ -65,7 +65,7 @@ class URL
     public static function sanitize_uri($uri)
     {
         $uri = preg_replace('/\?.*/', '', $uri);
-        $uri = trim($uri, '/');
+        $uri = '/' . trim($uri, '/');
         return $uri;
     }
 
@@ -80,7 +80,7 @@ class URL
         $rgxp = '/\$([a-zA-Z]([a-zA-Z0-9_]+)?)/';
         $rgx = preg_replace('/\//', "\\\/", $url);
         $rgx = preg_replace($rgxp, '(?P<$1>[^\/\?]+)', $rgx);
-        return '/^' . $rgx . '\/(?P<file>[^\/\?]+)$/';
+        return '/^' . $rgx . '\/(?P<file>[^\?]+)$/';
     }
 
     /**

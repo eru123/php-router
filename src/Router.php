@@ -1,6 +1,7 @@
 <?php
 
 namespace eru123\router;
+
 use stdClass;
 
 class Router
@@ -177,8 +178,9 @@ class Router
                 'ini' => 'text/x-ini',
             ];
 
-            if (isset($mimes[$state->file->ext])) {
-                $state->file->mime = $mimes[$state->file->ext];
+            $ext = strtolower($state->file->ext);
+            if (isset($mimes[$ext])) {
+                $state->file->mime = $mimes[$ext];
             }
 
             return $state->next();
@@ -192,11 +194,9 @@ class Router
                 $content = ob_get_contents();
                 ob_end_clean();
                 header('Content-Type: ' . $state->file->mime);
-                header('Content-Disposition: inline; filename="' . $state->file->name . '"');
                 print $content;
                 exit;
             }
-
             return $state->next();
         });
 
@@ -204,7 +204,6 @@ class Router
             if (file_exists($state->file->path)) {
                 $file = fopen($state->file->path, 'r');
                 header('Content-Type: ' . $state->file->mime);
-                header('Content-Disposition: attachment; filename="' . $state->file->name . '"');
                 while (!feof($file)) {
                     print fread($file, 1024 * 8);
                     flush();
@@ -225,7 +224,12 @@ class Router
     }
 
     public function run()
-    {
+    {   
+        header_remove('X-Powered-By');
+        header_remove('Server');
+
+        
+
         $routes = array_merge($this->static_routes, $this->routes, $this->fallback_routes);
 
         if ($this->is_debug) {
