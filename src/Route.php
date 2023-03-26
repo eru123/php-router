@@ -110,17 +110,17 @@ class Route
 
         $res = null;
 
-        foreach ($this->handlers as $handler) {
+        foreach ($this->handlers as $i => $handler) {
             try {
                 if ($state->is_allowed_skip()) {
                     break;
                 }
 
-                if (is_null($state->is_allowed_next())) {
+                if (is_null($state->is_allowed_next()) && $i > 0) {
                     throw new Error('Route handler did not call next() or stop()');
                 }
 
-                if (!$state->is_allowed_next()) {
+                if ($state->is_allowed_next() === FALSE) {
                     break;
                 }
 
@@ -157,6 +157,6 @@ class Route
             $res = call_user_func_array($this->response_handler, [$res, $state]);
         }
 
-        return $res;
+        exit;
     }
 }

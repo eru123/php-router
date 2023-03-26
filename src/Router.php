@@ -1,6 +1,7 @@
 <?php
 
 namespace eru123\router;
+use stdClass;
 
 class Router
 {
@@ -99,27 +100,111 @@ class Router
 
     public function static($url, $path = '/', ...$callbacks)
     {
-        $url = $this->base . $url;
-        array_unshift($callbacks, function (&$state) use ($path){
-            $ds = DIRECTORY_SEPARATOR;
-            $path = str_replace('/', $ds, $path);
-            $path = str_replace('\\', $ds, $path);
-            $path = rtrim($path, $ds) . $ds;
+        $url = trim($this->base, '/') . '/' . ltrim($url, '/');
+        array_unshift($callbacks, function ($state) use ($path) {
+            $path = str_replace('\\', '/', $path);
+            $path = rtrim($path, '/') . '/';
             $file = $state->params['file'];
-            $file = str_replace('/', $ds, $file);
-            $file = str_replace('\\', $ds, $file);
-            $file = ltrim($file, $ds);
-            $file = preg_replace("/$ds?\.$ds/", '', $file);
+            $file = str_replace('/', '/', $file);
+            $file = str_replace('\\', '/', $file);
+            $file = ltrim($file, '/');
+            $file = preg_replace('/\/?\.\//', '', $file);
             $file = $path . $file;
-            $state->filepath = $file;
-            $state->next();
+
+            $state->file = new stdClass();
+            $state->file->path = $file;
+            $state->file->name = basename($file);
+            $state->file->mime = 'application/octet-stream';
+            $state->file->allow_skip = true;
+
+            if (function_exists('pathinfo') && defined('PATHINFO_EXTENSION') && file_exists($file)) {
+                $state->file->ext = pathinfo($file, PATHINFO_EXTENSION);
+            } else  if (substr_count($file, '.') > 0) {
+                $state->file->ext = substr($file, strrpos($file, '.') + 1);
+            } else {
+                $state->file->ext = $state->filename;
+            }
+
+            return $state->next();
         });
-        array_push($callbacks, function (&$state) {
-            $file = $state->filepath;
-            if (file_exists($file)) {
-                $file = fopen($file, 'r');
-                header('Content-Type: application/octet-stream');
-                header('Content-Disposition: attachment; filename="' . basename($file) . '"');
+
+        array_push($callbacks, function ($state) {
+            $mimes = [
+                'css' => 'text/css',
+                'js' => 'application/javascript',
+                'json' => 'application/json',
+                'xml' => 'application/xml',
+                'html' => 'text/html',
+                'htm' => 'text/html',
+                'txt' => 'text/plain',
+                'csv' => 'text/csv',
+                'pdf' => 'application/pdf',
+                'png' => 'image/png',
+                'jpg' => 'image/jpeg',
+                'jpeg' => 'image/jpeg',
+                'gif' => 'image/gif',
+                'svg' => 'image/svg+xml',
+                'ico' => 'image/x-icon',
+                'zip' => 'application/zip',
+                'rar' => 'application/x-rar-compressed',
+                '7z' => 'application/x-7z-compressed',
+                'tar' => 'application/x-tar',
+                'gz' => 'application/gzip',
+                'mp3' => 'audio/mpeg',
+                'wav' => 'audio/wav',
+                'ogg' => 'audio/ogg',
+                'mp4' => 'video/mp4',
+                'webm' => 'video/webm',
+                'mkv' => 'video/x-matroska',
+                'avi' => 'video/x-msvideo',
+                'flv' => 'video/x-flv',
+                'wmv' => 'video/x-ms-wmv',
+                'mov' => 'video/quicktime',
+                'swf' => 'application/x-shockwave-flash',
+                'php' => 'text/x-php',
+                'asp' => 'text/asp',
+                'aspx' => 'text/aspx',
+                'py' => 'text/x-python',
+                'rb' => 'text/x-ruby',
+                'pl' => 'text/x-perl',
+                'sh' => 'text/x-shellscript',
+                'sql' => 'text/x-sql',
+                'c' => 'text/x-csrc',
+                'cpp' => 'text/x-c++src',
+                'java' => 'text/x-java',
+                'cs' => 'text/x-csharp',
+                'vb' => 'text/x-vb',
+                'ini' => 'text/x-ini',
+            ];
+
+            if (isset($mimes[$state->file->ext])) {
+                $state->file->mime = $mimes[$state->file->ext];
+            }
+
+            return $state->next();
+        });
+
+        array_push($callbacks, function ($state) {
+            if ($state->file->ext === 'php') {
+                $state->file->mime = 'text/html';
+                ob_start();
+                include $state->file->path;
+                $content = ob_get_contents();
+                ob_end_clean();
+                header('Content-Type: ' . $state->file->mime);
+                header('Content-Disposition: inline; filename="' . $state->file->name . '"');
+                print $content;
+                exit;
+            }
+
+            return $state->next();
+        });
+
+        array_push($callbacks, function ($state) {
+            if (file_exists($state->file->path)) {
+                $file = fopen($state->file->path, 'r');
+                header('Content-Type: ' . $state->file->mime);
+                header('Content-Disposition: attachment; filename="' . $state->file->name . '"');
                 while (!feof($file)) {
                     print fread($file, 1024 * 8);
                     flush();
@@ -127,7 +212,14 @@ class Router
                 fclose($file);
                 exit;
             }
+
+            if ($state->file->allow_skip) {
+                return $state->skip();
+            }
+
+            return $state->stop();
         });
+
         $this->static_routes[] = new Route('STATIC', $url, ...$callbacks);
         return $this;
     }
@@ -167,9 +259,9 @@ class Router
                     ->exec();
             }
         }
+
         header('Content-Type: application/json');
         echo json_encode($this->debug_data, JSON_PRETTY_PRINT);
-
         exit;
     }
 }

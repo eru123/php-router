@@ -5,7 +5,7 @@ namespace eru123\router;
 class RouteState
 {
     protected $allow_next = null;
-    protected $allow_skip = true;
+    protected $allow_skip = null;
     protected $route = [];
 
     public function __construct(Route $route)
@@ -53,15 +53,23 @@ class RouteState
     }
 
     public function __get($name)
-    {
+    {   
+        if (!is_array($this->route)) {
+            $this->route = [];
+        }
+
         if (isset($this->route[$name])) {
             return $this->route[$name];
         }
         return null;
     }
 
-    public function __set($name, $value)
-    {
+    public function _set($name, $value)
+    {   
+        if (!is_array($this->route)) {
+            $this->route = [];
+        }
+
         if (isset($this->route[$name])) {
             $this->route[$name] = $value;
         }

@@ -42,7 +42,7 @@ class URL
     public static function create_param_regex($url)
     {
         $url = static::sanitize_uri($url);
-        $rgxp = '/\$([a-zA-Z0-9_]+)/';
+        $rgxp = '/\$([a-zA-Z]([a-zA-Z0-9_]+)?)/';
         $rgx = preg_replace('/\//', "\\\/", $url);
         $rgx = preg_replace($rgxp, '(?P<$1>[^\/\?]+)', $rgx);
         return '/^' . $rgx . '$/';
@@ -70,18 +70,6 @@ class URL
     }
 
     /**
-     * Create FallBack URL for a Path
-     * @param string $path Path to create fallback URL
-     * @return string
-     */
-    public static function dir($path)
-    {
-        $url = static::sanitize_uri($path);
-        $url = rtrim($url, '/') . '\/(?P<file>[^\/\?]+)';
-        return $url;
-    }
-
-    /**
      * create DIR param regex
      * @param string $url URL to create DIR param regex
      * @return string
@@ -89,7 +77,7 @@ class URL
     public static function create_dir_param_regex($url)
     {
         $url = static::sanitize_uri($url);
-        $rgxp = '/\$([a-zA-Z0-9_]+)/';
+        $rgxp = '/\$([a-zA-Z]([a-zA-Z0-9_]+)?)/';
         $rgx = preg_replace('/\//', "\\\/", $url);
         $rgx = preg_replace($rgxp, '(?P<$1>[^\/\?]+)', $rgx);
         return '/^' . $rgx . '\/(?P<file>[^\/\?]+)$/';
