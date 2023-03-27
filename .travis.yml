@@ -1,6 +1,7 @@
 language: php
 php:
   - 8.2
-
-autoload:
+os: linux
+dist: focal
+install:
   - composer dump-autoload --optimize
