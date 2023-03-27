@@ -41,6 +41,28 @@ class Route
         }
     }
 
+    public function base($base)
+    {
+        $this->path = URL::sanitize_uri($base) . URL::sanitize_uri($this->path);
+
+        $is_file_dir = false;
+
+        if (in_array($this->method, ['FALLBACK', 'STATIC'])) {
+            $is_file_dir = true;
+            $this->is_matched = URL::dir_matched($this->path);
+        } else {
+            $this->is_matched = URL::matched($this->path);
+        }
+
+        if ($this->is_matched) {
+            $this->params = $is_file_dir ? URL::dir_params($this->path) : URL::params($this->path);
+            if (!in_array($this->method, ['ANY', 'FALLBACK', 'STATIC']) && $this->method !== trim(strtoupper($_SERVER['REQUEST_METHOD']))) {
+                $this->is_matched = false;
+            }
+        }
+
+    }
+
     public function debug($debug = true)
     {
         $this->is_debug = $debug;
@@ -49,7 +71,7 @@ class Route
 
     public function debug_data($data)
     {
-        $this->debug_data_store[] = $data;
+        $this->debug_data_store = array_merge($this->debug_data_store, $data);
         return $this;
     }
 
@@ -77,11 +99,14 @@ class Route
 
     public function info()
     {
+        $is_dir = in_array($this->method, ['FALLBACK', 'STATIC']);
+
         return [
             'method' => $this->method,
             'path' => $this->path,
             'params' => $this->params,
             'matched' => (bool) $this->is_matched,
+            'regex' => $is_dir ? URL::create_dir_param_regex($this->path) : URL::create_param_regex($this->path),
         ];
     }
 
@@ -131,6 +156,15 @@ class Route
 
                 throw new Error('Invalid route handler');
             } catch (Throwable $e) {
+                if ($state->is_debug) {
+                    $state->debug['error'] = [
+                        'message' => $e->getMessage(),
+                        'file' => $e->getFile(),
+                        'line' => $e->getLine(),
+                        'trace' => $e->getTrace(),
+                    ];
+                }
+
                 $state->stop();
                 if (is_callable($this->error_handler)) {
                     $res = call_user_func_array($this->error_handler, [$e, $state]);

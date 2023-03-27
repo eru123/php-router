@@ -2,7 +2,9 @@
 
 namespace eru123\router;
 
+use ReflectionClass;
 use stdClass;
+use Throwable;
 
 class Router
 {
@@ -12,12 +14,19 @@ class Router
     protected $state_class = RouteState::class;
     protected $error_handler = null;
     protected $response_handler = null;
-    protected $base = '';
+    protected $base = null;
     protected $is_debug = false;
     protected $debug_data = [];
+    protected $bootstrap_pipes = null;
 
     public function __construct()
     {
+    }
+
+    public function bootstrap(array $bootstrap)
+    {
+        $this->bootstrap_pipes = $bootstrap;
+        return $this;
     }
 
     public function debug($debug = true)
@@ -29,6 +38,9 @@ class Router
     public function base($base)
     {
         $this->base = $base;
+        array_walk($this->routes, function ($route) {
+            $route->base($this->base);
+        });
     }
 
     public function state($state_class = null)
@@ -57,8 +69,9 @@ class Router
 
     public function request($method, $url, ...$callbacks)
     {
-        $url = trim($this->base, '/') . '/' . ltrim($url, '/');
-        $this->routes[] = new Route($method, $url, ...$callbacks);
+        $route = new Route($method, $url, ...$callbacks);
+        if ($this->base) $route->base($this->base);
+        $this->routes[] = $route;
         return $this;
     }
 
@@ -94,14 +107,14 @@ class Router
 
     public function fallback($url, ...$callbacks)
     {
-        $url = trim($this->base, '/') . '/' . ltrim($url, '/');
-        $this->fallback_routes[] = new Route('FALLBACK', $url, ...$callbacks);
+        $route = new Route('FALLBACK', $url, ...$callbacks);
+        if ($this->base) $route->base($this->base);
+        $this->fallback_routes[] = $route;
         return $this;
     }
 
     public function static($url, $path = '/', ...$callbacks)
     {
-        $url = trim($this->base, '/') . '/' . ltrim($url, '/');
         array_unshift($callbacks, function ($state) use ($path) {
             $path = str_replace('\\', '/', $path);
             $path = rtrim($path, '/') . '/';
@@ -120,7 +133,7 @@ class Router
 
             if (function_exists('pathinfo') && defined('PATHINFO_EXTENSION') && file_exists($file)) {
                 $state->file->ext = pathinfo($file, PATHINFO_EXTENSION);
-            } else  if (substr_count($file, '.') > 0) {
+            } else if (substr_count($file, '.') > 0) {
                 $state->file->ext = substr($file, strrpos($file, '.') + 1);
             } else {
                 $state->file->ext = $state->filename;
@@ -219,17 +232,14 @@ class Router
             return $state->stop();
         });
 
-        $this->static_routes[] = new Route('STATIC', $url, ...$callbacks);
+        $route = new Route('STATIC', $url, ...$callbacks);
+        if ($this->base) $route->base($this->base);
+        $this->static_routes[] = $route;
         return $this;
     }
 
     public function run()
-    {   
-        header_remove('X-Powered-By');
-        header_remove('Server');
-
-        
-
+    {
         $routes = array_merge($this->static_routes, $this->routes, $this->fallback_routes);
 
         if ($this->is_debug) {
@@ -238,9 +248,47 @@ class Router
             }, $routes);
         }
 
+        $state = null;
+
+        if (is_array($this->bootstrap_pipes) && count($this->bootstrap_pipes) > 0) {
+            $reflection = new ReflectionClass($this->state_class);
+            $state = $reflection->newInstanceArgs([$this]);
+            $state->is_debug = $this->is_debug;
+            $state->debug_data_store = $this->debug_data;
+
+            foreach ($this->bootstrap_pipes as $pipe) {
+                try {
+                    if (is_callable($pipe)) {
+                        call_user_func_array($pipe, [$state]);
+                    }
+                } catch (Throwable $e) {
+                    if ($state->is_debug) {
+                        $state->debug_data_store = array_merge($state->debug_data_store, [
+                            'error' => [
+                                'message' => $e->getMessage(),
+                                'file' => $e->getFile(),
+                                'line' => $e->getLine(),
+                                'trace' => $e->getTrace(),
+                            ],
+                        ]);
+                    }
+
+                    if (is_callable($this->error_handler)) {
+                        call_user_func_array($this->error_handler, [$e, $state]);
+                    }
+
+                    throw $e;
+                }
+            }
+        }
+
         foreach ($routes as $route) {
             if (!($route instanceof Route)) {
                 continue;
+            }
+
+            if (!is_null($state) && $state instanceof $this->state_class) {
+                $state->extract_info($route);
             }
 
             if ($route->matched()) {
@@ -251,7 +299,7 @@ class Router
                         ->state($this->state_class)
                         ->debug($this->is_debug)
                         ->debug_data($this->debug_data)
-                        ->exec();
+                        ->exec($state);
                     continue;
                 }
 
@@ -260,7 +308,7 @@ class Router
                     ->state($this->state_class)
                     ->debug(false)
                     ->debug_data([])
-                    ->exec();
+                    ->exec($state);
             }
         }
 

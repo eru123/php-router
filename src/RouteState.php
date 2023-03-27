@@ -8,12 +8,14 @@ class RouteState
     protected $allow_skip = null;
     protected $route = [];
 
-    public function __construct(Route $route)
+    public function __construct($route = null)
     {
-        $this->extract_info($route);
+        if (!is_null($route) && $route instanceof Route) {
+            $this->extract_info($route);
+        }
     }
 
-    private function extract_info(Route $route)
+    final public function extract_info(Route $route)
     {
         $this->route = array_merge($this->route, $route->info());
     }
