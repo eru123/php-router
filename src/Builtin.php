@@ -9,6 +9,7 @@ class Builtin
     public static function cors()
     {
         header('Access-Control-Allow-Origin: *');
+        header('Access-Control-Max-Age: 86400');
         header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
         header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
     }
@@ -62,7 +63,7 @@ class Builtin
         exit;
     }
 
-    public static function error($e, RouteState $state)
+    public static function error(Throwable $e, RouteState $state)
     {   
         http_response_code($e->getCode() ?? 500);
         return static::response([
