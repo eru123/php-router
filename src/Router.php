@@ -12,12 +12,19 @@ class Router
     protected $static_routes = [];
     protected $fallback_routes = [];
     protected $state_class = RouteState::class;
-    protected $error_handler = null;
-    protected $response_handler = null;
+    protected $error_handler = [Builtin::class, 'error'];
+    protected $response_handler = [Builtin::class, 'response'];
     protected $base = null;
     protected $is_debug = false;
     protected $debug_data = [];
-    protected $bootstrap_pipes = null;
+    protected $bootstrap_pipes = [
+        [Builtin::class, 'cors'],
+        [Builtin::class, 'parse_body'],
+        [Builtin::class, 'parse_query'],
+        [Builtin::class, 'parse_xml_body'],
+        [Builtin::class, 'parse_json_body'],
+        [Builtin::class, 'remove_header_ads'],
+    ];
 
     public function __construct()
     {
@@ -70,7 +77,8 @@ class Router
     public function request($method, $url, ...$callbacks)
     {
         $route = new Route($method, $url, ...$callbacks);
-        if ($this->base) $route->base($this->base);
+        if ($this->base)
+            $route->base($this->base);
         $this->routes[] = $route;
         return $this;
     }
@@ -85,21 +93,6 @@ class Router
         return $this->request('POST', $url, ...$callbacks);
     }
 
-    public function put($url, ...$callbacks)
-    {
-        return $this->request('PUT', $url, ...$callbacks);
-    }
-
-    public function delete($url, ...$callbacks)
-    {
-        return $this->request('DELETE', $url, ...$callbacks);
-    }
-
-    public function patch($url, ...$callbacks)
-    {
-        return $this->request('PATCH', $url, ...$callbacks);
-    }
-
     public function any($url, ...$callbacks)
     {
         return $this->request('ANY', $url, ...$callbacks);
@@ -108,7 +101,8 @@ class Router
     public function fallback($url, ...$callbacks)
     {
         $route = new Route('FALLBACK', $url, ...$callbacks);
-        if ($this->base) $route->base($this->base);
+        if ($this->base)
+            $route->base($this->base);
         $this->fallback_routes[] = $route;
         return $this;
     }
@@ -233,7 +227,8 @@ class Router
         });
 
         $route = new Route('STATIC', $url, ...$callbacks);
-        if ($this->base) $route->base($this->base);
+        if ($this->base)
+            $route->base($this->base);
         $this->static_routes[] = $route;
         return $this;
     }

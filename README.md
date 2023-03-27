@@ -1,5 +1,10 @@
 # php-router
-A PHP Library for handling Routes using a Parent-Child Model
+PHP Library for handling HTTP requests
+
+[![Build Status](https://api.travis-ci.com/eru123/php-router.svg?branch=main)](https://app.travis-ci.com/github/eru123/php-router)
+[![Latest Stable Version](https://poser.pugx.org/eru123/router/v/stable)](https://packagist.org/packages/eru123/router)
+[![Total Downloads](https://poser.pugx.org/eru123/router/downloads)](https://packagist.org/packages/eru123/router)
+[![License](https://poser.pugx.org/eru123/router/license)](https://packagist.org/packages/eru123/router)
 
 # Usage
 ## Install
@@ -13,114 +18,117 @@ composer require eru123/router
 
 require_once __DIR__ . '/vendor/autoload.php';
 
-use eru123\Router\Router;
+use eru123\router\Router;
+use eru123\router\Builtin;
 
-$router = new Router();
-$router->base('/api');
+// Create Router instance
+$r = new Router;
 
-// Get method example
-$router->get('/hello', function() {
-    return 'Hello World with Get!';
-});
+// Enable Debug Mode.
+// When debug mode is on, we add is_debug and debug() methods to the route state
+// $state->is_debug() returns true if debug mode is on
+// $state->debug() returns the debug state
+$r->debug();
 
-// Post method example
-$router->post('/hello', function() {
-    return 'Hello World! with Get!';
-});
+// Set Base Path
+// The base path is the path that is removed from the request path
+// This is useful if you are using a reverse proxy
+$r->base('/api');
 
-// Custom method example with PUT
-$router->request('PUT', '/hello', function() {
-    return 'Hello World! with Put!';
-});
+// Set a response handler using a callable function
+// Response handlers are called after the last route
+// handler is called, it uses the return value of the 
+// last route handler as the first argument and then
+// the route state as the second argument
+$r->response(function($result, $state) {
+    if (is_array($res) || is_object($res)) {
 
-// Run the router
-$router->run();
-```
-
-## Parent-Child Routes
-```php
-<?php
-
-require_once __DIR__ . '/vendor/autoload.php';
-
-use eru123\Router\Router;
-
-$childRouteV1 = new Router();
-$childRouteV1->base('/v1');
-$childRouteV1->get('/hello', function() {
-    return 'Hello World! from v1';
-});
-
-$childRouteV2 = new Router();
-$childRouteV2->base('/v2');
-$childRouteV2->get('/hello', function() {
-    return 'Hello World! from v2';
-});
-
-$router = new Router();
-$router->base('/api');
-$router->add($childRouteV1);
-$router->add($childRouteV2);
-
-/**
- * Registred routes:
- *  - /api/v1/hello
- *  - /api/v2/hello
- */
-
-$router->run();
-```
-
-## Working with parameters
-```php
-<?php
-
-require_once __DIR__ . '/vendor/autoload.php';
-
-use eru123\Router\Router;
-
-$router = new Router();
-
-$router->get('/hello/{name}', function($params) {
-    return 'Hello ' . $params['name'];
-});
-```
-
-## Pipeline-based handlers
- - Middleware is a function that is not the last in the pipeline
- - Handler is a function that is the last in the pipeline
- - If a middleware returns null or void, url parameters array will be passed to the next middleware or handler
- - If a middleware returns mixed value, it will be passed to the next middleware or handler as argument
-```php
-<?php
-
-require_once __DIR__ . '/vendor/autoload.php';
-
-use eru123\Router\Router;
-
-$router = new Router();
-
-$numberMiddleware = function($params) {
-    if (!is_numeric($params['a']) || !is_numeric($params['b'])) {
-        throw new \Exception('a and b must be numeric');
+        header('Content-Type: application/json');
+        if ($state->is_debug && is_array($res)) {
+            $result['debug'] = $state->debug;
+        }
+        
+        print json_encode($result);
+        exit;
     }
-};
 
-$convertToIntMiddleware = function($params) {
-    $params['a'] = (int) $params['a'];
-    $params['b'] = (int) $params['b'];
-    return $params;
-};
+    if (is_string($result) && strpos($result, '<?xml') === 0) {
+        header('Content-Type: application/xml');
+        print $result;
+        exit;
+    }
 
-$mutiplyHandler = function ($params) {
-    return $params['a'] * $params['b'];
-};
+    print $result;
+    exit;
+});
 
-$router->get('/multiply/{a}/{b}', $numberMiddleware,  $convertToIntMiddleware, $mutiplyHandler);
+// Set an error handler using a callable function
+// Error handlers are called when a route handler creates a Throwable
+$r->error(function($error, $state) {
+    $result = [
+        'error' => $error->getMessage(),
+        'code' => $error->getCode(),
+    ];
 
-// Alternative structure for Pipelines
-$pipes = [$numberMiddleware,  $convertToIntMiddleware, $mutiplyHandler];
-$router->get('/multiply2/{a}/{b}', ...$pipes);
+    if ($state->is_debug) {
+        $result['debug'] = $state->debug;
+    }
 
-$router->run();
-```
+    header('Content-Type: application/json');
+    print json_encode($result);
+    exit;
+});
+
+// Default response and error handlers
+$r->response([Builtin::class, 'response']);
+$r->error([Builtin::class, 'error']);
+
+// Create Route Request
+// The first argument is the HTTP method
+// The second argument is the path
+// The third and so on arguments are route handlers
+$r->request('GET', '/', function($state) {
+    return 'Hello World!';
+});
+
+// Request Aliases
+// We implement most used and common HTTP methods as aliases
+$r->get($path, $handler);
+$r->post($path, $handler);
+$r->put($path, $handler);
+
+// Fallback Route
+// This route is called when no other route matches
+// all requests with /pages as the base path will 
+// be handled by this route if no other route matches
+$r->fallback('/pages', function($state) {
+    return 'Page not found';
+});
+
+// OR Global Fallback Route
+// This route is called when no other route matches
+// all requests will be handled by this route if no other route matches
+$r->fallback('/', function($state) {
+    return 'Page not found';
+});
+
+// Static Routes
+// Static routes are routes that are intended to be used for static files.
+// It can serve files from a forbidden directory that can't be accessed by
+// the client. You can inject a middleware to it for checking authentication
+// or etc.
+$r->static('/static', __DIR__ . '/static', function($state) {
+    // Check if user is authenticated
+    if (!$state->user) {
+        throw new \Exception('Not authenticated', 401); // this will be handled by the error handler
+
+        // You can also return a response here if you dont want to use the error handler
+        header('Content-Type: application/json');
+        print json_encode([
+            'error' => 'Not authenticated',
+            'code' => 401,
+        ]);
+
+        exit;
+    }
+});
