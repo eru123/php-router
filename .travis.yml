@@ -4,4 +4,5 @@ php:
 os: linux
 dist: focal
 install:
-  - composer dump-autoload --optimize
+  - composer install --no-interaction --prefer-dist --optimize-autoloader
+script: true
