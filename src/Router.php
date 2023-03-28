@@ -116,23 +116,28 @@ class Router
             $file = str_replace('/', '/', $file);
             $file = str_replace('\\', '/', $file);
             $file = ltrim($file, '/');
-            $file = preg_replace('/\/?\.\//', '', $file);
             $file = $path . $file;
+            $file = realpath($file);
+
+            if (strpos($file, $path) !== 0 || !file_exists($file)) {
+                return $state->skip();
+            }
 
             $state->file = new stdClass();
+            $state->file->basedir = $path;
             $state->file->path = $file;
             $state->file->name = basename($file);
             $state->file->mime = 'application/octet-stream';
             $state->file->allow_skip = true;
+            $state->file->ext = null;
 
             if (function_exists('pathinfo') && defined('PATHINFO_EXTENSION') && file_exists($file)) {
                 $state->file->ext = pathinfo($file, PATHINFO_EXTENSION);
             } else if (substr_count($file, '.') > 0) {
                 $state->file->ext = substr($file, strrpos($file, '.') + 1);
-            } else {
-                $state->file->ext = $state->filename;
             }
 
+            $state->file->ext = !is_string($state->file->ext) ? $state->filename : $state->file->ext;
             return $state->next();
         });
 
@@ -185,7 +190,7 @@ class Router
                 'ini' => 'text/x-ini',
             ];
 
-            $ext = strtolower($state->file->ext);
+            $ext = strtolower($state->file->ext ?? '');
             if (isset($mimes[$ext])) {
                 $state->file->mime = $mimes[$ext];
             }
@@ -284,6 +289,14 @@ class Router
 
             if (!is_null($state) && $state instanceof $this->state_class) {
                 $state->extract_info($route);
+            }
+
+            if ($this->is_debug && isset($this->debug_data['route'])){
+                if (!isset($this->debug_data['skipped_routes'])) {
+                    $this->debug_data['skipped_routes'] = [];
+                }
+                $this->debug_data['skipped_routes'][] = $this->debug_data['route'];
+                unset($this->debug_data['route']);
             }
 
             if ($route->matched()) {

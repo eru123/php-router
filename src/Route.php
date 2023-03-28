@@ -174,13 +174,13 @@ class Route
             }
         }
 
-        if (count($this->handlers) > 1 && is_null($state->is_allowed_next())) {
-            throw new Error('Route handler did not call next() or stop()');
-        }
-
         if ($state->is_allowed_skip()) {
             $state->unskip()->next();
             return null;
+        }
+
+        if (count($this->handlers) > 1 && is_null($state->is_allowed_next())) {
+            throw new Error('Route handler did not call next() or stop()');
         }
 
         if (!$state->is_allowed_next()) {
