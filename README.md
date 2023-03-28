@@ -26,13 +26,12 @@ $r = new Router;
 
 // Enable Debug Mode.
 // When debug mode is on, we add is_debug and debug() methods to the route state
-// $state->is_debug() returns true if debug mode is on
-// $state->debug() returns the debug state
+// $state->is_debug - true if debug mode is on
+// $state->debug - array of debugging information (ex: routes, route, errors, etc.)
 $r->debug();
 
-// Set Base Path
-// The base path is the path that is removed from the request path
-// This is useful if you are using a reverse proxy
+// Base Path
+// This is used as the prefix for all routes
 $r->base('/api');
 
 // Set a response handler using a callable function
@@ -97,6 +96,14 @@ $r->get($path, $handler);
 $r->post($path, $handler);
 $r->put($path, $handler);
 
+// URL Parameters
+// You can use URL parameters in the path with $<name> syntax.
+// Parameter name must start with alpha and the following 
+// characters can be alpanumeric or underscore.
+$r->get('/user/$id', function($state) {
+    return 'User ID: ' . $state->params['id'];
+});
+
 // Fallback Route
 // This route is called when no other route matches
 // all requests with /pages as the base path will 
@@ -107,7 +114,12 @@ $r->fallback('/pages', function($state) {
 
 // OR Global Fallback Route
 // This route is called when no other route matches
-// all requests will be handled by this route if no other route matches
+// all requests will be handled by this route if no other route matches.
+// It uses a prefix url, and process the fallback route only if the URL
+// matches the prefix url.
+// Example:
+//      $r->fallback('/pages', $handler)
+//      Process all requests starting with /pages (ex: /pages/1, /pages/user/1, etc.) 
 $r->fallback('/', function($state) {
     return 'Page not found';
 });
@@ -117,6 +129,13 @@ $r->fallback('/', function($state) {
 // It can serve files from a forbidden directory that can't be accessed by
 // the client. You can inject a middleware to it for checking authentication
 // or etc.
+// It uses a prefix url, and process the static route only if the URL
+// matches the prefix url.
+// For the second argument, you need to pass a directory path where the 
+// request file needs to be looked up.
+// Example:
+//      $r->static('/css', __DIR__ . '/../src/assets/css', $handler)
+//      Process all requests starting with /css (ex: /css/style.css, /css/style.min.css, etc.) 
 $r->static('/static', __DIR__ . '/static', function($state) {
     // Check if user is authenticated
     if (!$state->user) {
@@ -131,4 +150,28 @@ $r->static('/static', __DIR__ . '/static', function($state) {
 
         exit;
     }
+
+    // If the handler doesn't return anything, the file will be served accordingly
+});
+
+```
+
+### Static Handler
+```php
+$r->static('/static', __DIR__ . '/static', function($state) {
+    // Check if user is authenticated
+    if (!$state->user) {
+        throw new \Exception('Not authenticated', 401); // this will be handled by the error handler
+
+        // You can also return a response here if you dont want to use the error handler
+        header('Content-Type: application/json');
+        print json_encode([
+            'error' => 'Not authenticated',
+            'code' => 401,
+        ]);
+
+        exit;
+    }
+
+    // If the handler doesn't return anything, the file will be served accordingly
 });
