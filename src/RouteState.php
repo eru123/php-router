@@ -63,11 +63,16 @@ class RouteState
         if (isset($this->route[$name])) {
             return $this->route[$name];
         }
+        
         return null;
     }
 
     public function _set($name, $value)
     {   
+        if (in_array($name, ['allow_next', 'allow_skip', 'route'])) {
+            return;
+        }
+
         if (!is_array($this->route)) {
             $this->route = [];
         }

@@ -1,12 +1,26 @@
 # php-router
-PHP Library for handling HTTP requests
 
 [![Build Status](https://api.travis-ci.com/eru123/php-router.svg?branch=main)](https://app.travis-ci.com/github/eru123/php-router)
 [![Latest Stable Version](https://poser.pugx.org/eru123/router/v/stable)](https://packagist.org/packages/eru123/router)
 [![Total Downloads](https://poser.pugx.org/eru123/router/downloads)](https://packagist.org/packages/eru123/router)
 [![License](https://poser.pugx.org/eru123/router/license)](https://packagist.org/packages/eru123/router)
 
-# Usage
+PHP Library for handling HTTP requests.
+
+For latest documentation, please visit [Docs](https://eru123.github.io/php-router)
+
+## Supported Features
+ - [x] `URL Parameters` - Allowed dynamic parameters in the url path (ex: `/user/$id`)
+ - [x] `Static Routes` - Serve static files from a directory (even forbidden directories) with directory traversal protection
+ - [x] `Fallback Routes` - Fallback route for handling requests that doesn't match any other route but match the prefix url
+ - [x] `Debugging` - Debug mode for debugging routes and route state
+ - [x] `Route State` - Route state is passed to all route handlers and response handlers
+ - [x] `Router Bootstrapper` - Allows you to run pre-handlers and allows you to manipulate the route state before the router starts running handlers
+ - [x] `Route Handlers` - Route handlers are called when a route matches the request
+ - [x] `Response Handlers` 
+ - [x] `Error Handlers`
+
+# Basic Usage
 ## Install
 ```bash
 composer require eru123/router
@@ -155,23 +169,71 @@ $r->static('/static', __DIR__ . '/static', function($state) {
 });
 
 ```
+# Advanced Usage
+In this section, we will cover some advanced usage and in-depth details about the usage of the library.
 
-### Static Handler
+## Router paths matching order
+For advanced usage, you need to understand how the router matches the request path to the route path. The router matches the request path to the route path in the following order:
+ - `Router::static('/', $directory[, ...$handlers])` - Routes defined using the static method are matched first.
+ - `Router::request($method, $path, ...$handlers)`, `Router::get($path, ...$handlers)`, `Router::post($path, ...$handlers)` - Routes defined using the request method and it's aliases are matched next.
+ - `Router::fallback($path, ...$handlers)` - Routes defined using the fallback method are matched last.
+
+Regarding to order of matching inside these groups, the router matches the request path to the route path in the first come first serve order. 
+ 
+For example, if you have the following routes:
 ```php
-$r->static('/static', __DIR__ . '/static', function($state) {
-    // Check if user is authenticated
-    if (!$state->user) {
-        throw new \Exception('Not authenticated', 401); // this will be handled by the error handler
+// First come first serve order
 
-        // You can also return a response here if you dont want to use the error handler
-        header('Content-Type: application/json');
-        print json_encode([
-            'error' => 'Not authenticated',
-            'code' => 401,
-        ]);
+// this will be matched first, this will also match /user/me
+$r->get('/user/$x', $handler1); 
 
-        exit;
-    }
+// this will be matched second, but it's handlers will not be 
+// called unless the $handler1's state called skip() method
+// Example: $state->skip();
+$r->get('/user/me', $handler2); 
 
-    // If the handler doesn't return anything, the file will be served accordingly
-});
+// NOTE: These kind of URL path designs are NOT RECOMMENDED.
+```
+
+## Route State
+`RouteState` is the class instance that is passed to all handlers to share information between handlers and routes.
+
+These are methods of the `RouteState` you can use:
+ - `skip()` - Set the state to allow skip to skip all the remaining handlers of the current route to proceed to the next route.
+ - `unskip()` - Set the state to disallow skip to cancel the skip state.
+ - `is_allowed_skip()` - Check if the state is allowed to skip. Values can be `true`, `false`, or `null`. `null` means the state is not set or `skip()` or `unskip()` is not called.
+ - `next()` - This must be called for each route handler (except the last handler) to proceed to the next handler.
+ - `stop()` - This should be called if you want want to stop the execution for the next handlers of the current route.
+ - `is_allowed_next()` - Check if the state is allowed to next. Values can be `true`, `false`, or `null`. `null` means the state is not set or `next()` or `stop()` is not called.
+ - `extract_info(Route $route)` - Extracts the information from the result of $route->info() and set it as RouteState properties. Below are the defined route info properties to be extracted:
+    - `method` - The HTTP method defined in the route. This also includes the magic methods of this library like ANY, FALLBACK, and STATIC.
+    - `path` - The URL path defined in the route. If you set the base path in the router, it will be included in the path.
+    - `params` - The URL parameters array defined in the route.
+    - `matched` - A boolean value that indicates if the route is matched to the request path.
+    - `regex` - The regex pattern used to match the request path to the route path.
+
+Alternatively, you can override the `RouteState` properties by setting it directly like magic. For example:
+```php
+// Override existing properties
+$state->method = 'GET';
+$state->path = '/user/1';
+
+// Add new properties
+$state->user_id = 1;
+```
+
+However, there are protected properties that you can't override which are:
+ - `allow_next`
+ - `allow_skip`
+ - `route`
+
+## Static Handler `Router::static($path, $directory[, ...$handlers])`
+ - `$path` - The URL path prefix for the static route.
+ - `$directory` - The directory path where the request file needs to be looked up.
+ - `$handlers` - Optional route handlers. These can be any callable function, class static method, or object method call which accepts a `RouterState $state` object as a parameter.
+
+### Serve files from a forbidden directory
+Static handler can serve files from a forbidden directory that can't be accessed by the client directly because of the web server configuration (e.g. Apache's `deny from all` directive).
+```php
+$r->static('/', '/');
+```
