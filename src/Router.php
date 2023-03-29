@@ -48,6 +48,8 @@ class Router
         array_walk($this->routes, function ($route) {
             $route->base($this->base);
         });
+
+        return $this;
     }
 
     public function state($state_class = null)

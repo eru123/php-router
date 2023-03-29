@@ -43,7 +43,7 @@ class Route
 
     public function base($base)
     {
-        $this->path = URL::sanitize_uri($base) . URL::sanitize_uri($this->path);
+        $this->path = URL::sanitize_uri(URL::sanitize_uri($base) . URL::sanitize_uri($this->path));
 
         $is_file_dir = false;
 

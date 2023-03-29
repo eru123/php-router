@@ -79,8 +79,9 @@ class URL
         $url = static::sanitize_uri($url);
         $rgxp = '/\$([a-zA-Z]([a-zA-Z0-9_]+)?)/';
         $rgx = preg_replace('/\//', "\\\/", $url);
+        $rgx = preg_replace('/\\\\\/$/', '', $rgx);
         $rgx = preg_replace($rgxp, '(?P<$1>[^\/\?]+)', $rgx);
-        return '/^' . $rgx . '\/(?P<file>[^\?]+)$/';
+        return '/^' . $rgx . '(?P<file>\/?[^\?]+)?$/';
     }
 
     /**
@@ -107,8 +108,13 @@ class URL
         $urlp = !empty($url) ? static::sanitize_uri($url) : static::current();
         $rgxp = static::create_dir_param_regex($rgx);
         preg_match($rgxp, $urlp, $matches);
-        return array_filter($matches, function ($k) {
-            return !is_numeric($k);
-        }, ARRAY_FILTER_USE_KEY);
+        return array_map(
+            function ($v) {
+                return trim($v, '/') ?: null;
+            },
+            array_filter($matches, function ($k) {
+                return !is_numeric($k);
+            }, ARRAY_FILTER_USE_KEY)
+        );
     }
 }
