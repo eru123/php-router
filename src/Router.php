@@ -199,16 +199,27 @@ class Router
     {
         array_unshift($callbacks, function ($state) use ($path) {
             $path = realpath($path);
+
+            if (empty($path)) {
+                return $state->skip();
+            }
+
             $path = str_replace('\\', '/', $path);
             $path = rtrim($path, '/') . '/';
-            $file = $state->params['file'];
+            $file = @$state->params['file'];
+
+            if (empty($file)) {
+                return $state->skip();
+            }
+
             $file = str_replace('/', '/', $file);
             $file = str_replace('\\', '/', $file);
             $file = ltrim($file, '/');
             $file = $path . $file;
             $file = realpath($file);
-            if (strpos($file, $path) !== 0 || !file_exists($file)) {
-                return $state->stop();
+
+            if (strpos($file, realpath($path)) !== 0 || !file_exists($file)) {
+                return $state->skip();
             }
 
             $state->file = new stdClass();
