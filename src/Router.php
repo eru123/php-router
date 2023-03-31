@@ -198,6 +198,7 @@ class Router
     public function static($url, $path = '/', ...$callbacks)
     {
         array_unshift($callbacks, function ($state) use ($path) {
+            $path = realpath($path);
             $path = str_replace('\\', '/', $path);
             $path = rtrim($path, '/') . '/';
             $file = $state->params['file'];
@@ -206,9 +207,8 @@ class Router
             $file = ltrim($file, '/');
             $file = $path . $file;
             $file = realpath($file);
-
             if (strpos($file, $path) !== 0 || !file_exists($file)) {
-                return $state->skip();
+                return $state->stop();
             }
 
             $state->file = new stdClass();
