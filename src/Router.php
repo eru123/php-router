@@ -2,12 +2,17 @@
 
 namespace eru123\router;
 
+use Exception;
 use ReflectionClass;
 use stdClass;
 use Throwable;
 
 class Router
 {
+    protected $is_child = false;
+    protected $childs = [];
+    protected $parent = null;
+    protected $is_bootsrapped = false;
     protected $routes = [];
     protected $static_routes = [];
     protected $fallback_routes = [];
@@ -17,6 +22,7 @@ class Router
     protected $base = null;
     protected $is_debug = false;
     protected $debug_data = [];
+    protected $is_bootstrap_run = false;
     protected $bootstrap_pipes = [
         [Builtin::class, 'cors'],
         [Builtin::class, 'parse_body'],
@@ -33,7 +39,85 @@ class Router
     public function bootstrap(array $bootstrap)
     {
         $this->bootstrap_pipes = $bootstrap;
+        $this->is_bootsrapped = true;
         return $this;
+    }
+
+    public function run_bootstrap(&$state = null)
+    {
+        if ($this->is_bootstrap_run) {
+            return $this;
+        }
+
+        if (!$this->is_bootsrapped && !$this->parent()) {
+            return $this;
+        }
+
+        if (!(is_array($this->bootstrap_pipes) && count($this->bootstrap_pipes) > 0)) {
+            return $this;
+        }
+
+        $this->is_bootstrap_run = true;
+        if ($this->parent()) {
+            $this->parent()->run_bootstrap($state);
+        }
+
+        if (is_null($state)) {
+            $reflection = new ReflectionClass($this->state_class);
+            $state = $reflection->newInstanceArgs([$this]);
+            $state->is_debug = $this->is_debug;
+            $state->debug_data_store = $this->debug_data;
+        }
+
+        foreach ($this->bootstrap_pipes as $pipe) {
+            try {
+                if (is_callable($pipe)) {
+                    call_user_func_array($pipe, [$state]);
+                }
+            } catch (Throwable $e) {
+                if ($state->is_debug) {
+                    $state->debug_data_store = array_merge($state->debug_data_store, [
+                        'error' => [
+                            'message' => $e->getMessage(),
+                            'file' => $e->getFile(),
+                            'line' => $e->getLine(),
+                            'trace' => $e->getTrace(),
+                        ],
+                    ]);
+                }
+
+                if (is_callable($this->error_handler)) {
+                    call_user_func_array($this->error_handler, [$e, $state]);
+                }
+
+                throw $e;
+            }
+        }
+    }
+
+    public function set_as_child()
+    {
+        $this->is_child = true;
+        return $this;
+    }
+
+    public function child(Router $router)
+    {
+        $router->set_as_child();
+        $router->parent($this);
+
+        $this->childs[] = $router;
+        return $this;
+    }
+
+    public function parent(&$router = null)
+    {
+        if (is_null($router)) {
+            return $this->parent;
+        }
+
+        $this->parent = $router;
+        return null;
     }
 
     public function debug($debug = true)
@@ -42,13 +126,13 @@ class Router
         return $this;
     }
 
-    public function base($base)
+    public function base($base = null)
     {
-        $this->base = $base;
-        array_walk($this->routes, function ($route) {
-            $route->base($this->base);
-        });
+        if (is_null($base)) {
+            return $this->base;
+        }
 
+        $this->base = $base;
         return $this;
     }
 
@@ -79,8 +163,9 @@ class Router
     public function request($method, $url, ...$callbacks)
     {
         $route = new Route($method, $url, ...$callbacks);
-        if ($this->base)
-            $route->base($this->base);
+        // if ($this->base)
+        //     $route->base($this->base);
+        $route->router($this);
         $this->routes[] = $route;
         return $this;
     }
@@ -103,8 +188,9 @@ class Router
     public function fallback($url, ...$callbacks)
     {
         $route = new Route('FALLBACK', $url, ...$callbacks);
-        if ($this->base)
-            $route->base($this->base);
+        // if ($this->base)
+        //     $route->base($this->base);
+        $route->router($this);
         $this->fallback_routes[] = $route;
         return $this;
     }
@@ -234,66 +320,64 @@ class Router
         });
 
         $route = new Route('STATIC', $url, ...$callbacks);
-        if ($this->base)
-            $route->base($this->base);
+        // if ($this->base)
+        //     $route->base($this->base);
+        $route->router($this);
         $this->static_routes[] = $route;
         return $this;
     }
 
-    public function run()
+    public function allroutes()
     {
-        $routes = array_merge($this->static_routes, $this->routes, $this->fallback_routes);
+        return array_merge($this->static_routes, $this->routes, $this->fallback_routes);
+    }
+
+    function has_childs()
+    {
+        return count($this->childs) > 0;
+    }
+
+    function routes_map()
+    {
+        $routes = $this->allroutes();
+        if ($this->has_childs()) {
+            foreach ($this->childs as $child) {
+                $routes = array_merge($child->routes_map(), $routes);
+            }
+        }
+
+        return $routes;
+    }
+
+    function routes_map_info()
+    {
+        $routes = $this->routes_map();
+        $info = array_map(
+            function ($route) {
+                return $route->info();
+            },
+            $routes
+        );
+
+        return $info;
+    }
+
+    public function run(?string $base = null)
+    {
+        $this->base($base);
 
         if ($this->is_debug) {
-            $this->debug_data['routes'] = array_map(function ($route) {
-                return $route->info();
-            }, $routes);
+            $this->debug_data['routes'] = $this->routes_map_info();
         }
 
         $state = null;
 
-        if (is_array($this->bootstrap_pipes) && count($this->bootstrap_pipes) > 0) {
-            $reflection = new ReflectionClass($this->state_class);
-            $state = $reflection->newInstanceArgs([$this]);
-            $state->is_debug = $this->is_debug;
-            $state->debug_data_store = $this->debug_data;
-
-            foreach ($this->bootstrap_pipes as $pipe) {
-                try {
-                    if (is_callable($pipe)) {
-                        call_user_func_array($pipe, [$state]);
-                    }
-                } catch (Throwable $e) {
-                    if ($state->is_debug) {
-                        $state->debug_data_store = array_merge($state->debug_data_store, [
-                            'error' => [
-                                'message' => $e->getMessage(),
-                                'file' => $e->getFile(),
-                                'line' => $e->getLine(),
-                                'trace' => $e->getTrace(),
-                            ],
-                        ]);
-                    }
-
-                    if (is_callable($this->error_handler)) {
-                        call_user_func_array($this->error_handler, [$e, $state]);
-                    }
-
-                    throw $e;
-                }
-            }
-        }
-
-        foreach ($routes as $route) {
+        foreach ($this->routes_map() as $route) {
             if (!($route instanceof Route)) {
                 continue;
             }
 
-            if (!is_null($state) && $state instanceof $this->state_class) {
-                $state->extract_info($route);
-            }
-
-            if ($this->is_debug && isset($this->debug_data['route'])){
+            if ($this->is_debug && isset($this->debug_data['route'])) {
                 if (!isset($this->debug_data['skipped_routes'])) {
                     $this->debug_data['skipped_routes'] = [];
                 }
@@ -301,7 +385,12 @@ class Router
                 unset($this->debug_data['route']);
             }
 
-            if ($route->matched()) {
+            if ($route->map_match()) {
+                $route->router()->run_bootstrap($state);
+                if (is_object($state) && method_exists($state, 'extract_info')) {
+                    $state->extract_info($route);
+                }
+
                 if ($this->is_debug) {
                     $this->debug_data['route'] = $route->info();
                     $route->error($this->error_handler)
@@ -322,8 +411,15 @@ class Router
             }
         }
 
-        header('Content-Type: application/json');
-        echo json_encode($this->debug_data, JSON_PRETTY_PRINT);
-        exit;
+        if (!$this->is_child && $this->is_debug) {
+            header('Content-Type: application/json');
+            echo json_encode($this->debug_data, JSON_PRETTY_PRINT);
+            exit;
+        }
+
+        if (!$this->is_child) {
+            header('HTTP/1.1 404 Not Found');
+            exit;
+        }
     }
 }

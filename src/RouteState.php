@@ -15,9 +15,11 @@ class RouteState
         }
     }
 
-    final public function extract_info(Route $route)
+    final public function extract_info($route)
     {
+        if ($route instanceof Route)
         $this->route = array_merge($this->route, $route->info());
+        return $this;
     }
 
     final public function skip()

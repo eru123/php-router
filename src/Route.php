@@ -12,55 +12,69 @@ class Route
     protected $handlers = [];
     protected $params = [];
     protected $path = null;
+    protected $uri = null;
     protected $is_matched = false;
     protected $state_class = RouteState::class;
     protected $error_handler = null;
     protected $response_handler = null;
     protected $is_debug = false;
     protected $debug_data_store = [];
+    protected $router = null;
 
     public function __construct($method, $url, ...$handlers)
     {
         $this->method = trim(strtoupper($method));
         $this->path = $url;
+        $this->uri = URL::current();
         $this->handlers = $handlers;
-        $is_file_dir = false;
-
-        if (in_array($this->method, ['FALLBACK', 'STATIC'])) {
-            $is_file_dir = true;
-            $this->is_matched = URL::dir_matched($url);
-        } else {
-            $this->is_matched = URL::matched($url);
-        }
-
-        if ($this->is_matched) {
-            $this->params = $is_file_dir ? URL::dir_params($url) : URL::params($url);
-            if (!in_array($this->method, ['ANY', 'FALLBACK', 'STATIC']) && $this->method !== trim(strtoupper($_SERVER['REQUEST_METHOD']))) {
-                $this->is_matched = false;
-            }
-        }
     }
 
-    public function base($base)
+    public function router(Router &$router = null)
     {
-        $this->path = URL::sanitize_uri(URL::sanitize_uri($base) . URL::sanitize_uri($this->path));
+        if (is_null($router)) {
+            return $this->router;
+        }
 
+        $this->router = $router;
+        return $this;
+    }
+
+    public function map_path()
+    {
+        $suffix = '/' . trim($this->path, '/');
+        $parent = $this->router;
+        $prefix = $parent->base() ? $parent->base() : '';
+        while ($parent->parent()) {
+            $parent = $parent->parent();
+            $base = $parent->base() ? $parent->base() : '';
+            $prefix = trim($base, '/') . '/' . trim($prefix, '/');
+            $prefix = trim($prefix, '/');
+        }
+        return '/' . trim(trim($prefix, '/') . $suffix, '/');
+    }
+
+    public function map_match()
+    {
+        $path = $this->map_path();
         $is_file_dir = false;
+
+        $matched = false;
 
         if (in_array($this->method, ['FALLBACK', 'STATIC'])) {
             $is_file_dir = true;
-            $this->is_matched = URL::dir_matched($this->path);
+            $matched = URL::dir_matched($path);
         } else {
-            $this->is_matched = URL::matched($this->path);
+            $matched = URL::matched($path);
         }
 
-        if ($this->is_matched) {
-            $this->params = $is_file_dir ? URL::dir_params($this->path) : URL::params($this->path);
+        if ($matched) {
+            $this->params = $is_file_dir ? URL::dir_params($path) : URL::params($path);
             if (!in_array($this->method, ['ANY', 'FALLBACK', 'STATIC']) && $this->method !== trim(strtoupper($_SERVER['REQUEST_METHOD']))) {
-                $this->is_matched = false;
+                $matched = false;
             }
         }
 
+        return $matched;
     }
 
     public function debug($debug = true)
@@ -100,24 +114,21 @@ class Route
     public function info()
     {
         $is_dir = in_array($this->method, ['FALLBACK', 'STATIC']);
-
+        $path = $this->map_path();
+        $matched = $this->map_match();
         return [
+            'matched' => (bool) $matched,
             'method' => $this->method,
-            'path' => $this->path,
+            'path' => $path,
             'params' => $this->params,
-            'matched' => (bool) $this->is_matched,
-            'regex' => $is_dir ? URL::create_dir_param_regex($this->path) : URL::create_param_regex($this->path),
+            'regex' => $is_dir ? URL::create_dir_param_regex($path) : URL::create_param_regex($path),
+            'uri' => $this->uri,
         ];
-    }
-
-    public function matched()
-    {
-        return (bool) $this->is_matched;
     }
 
     public function exec($state_obj = null)
     {
-        if (!$this->is_matched) {
+        if (!$this->map_match()) {
             return;
         }
 

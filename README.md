@@ -17,8 +17,9 @@ For latest documentation, please visit [Docs](https://eru123.github.io/php-route
  - [x] `Route State` - Route state is passed to all route handlers and response handlers
  - [x] `Router Bootstrapper` - Allows you to run pre-handlers and allows you to manipulate the route state before the router starts running handlers
  - [x] `Route Handlers` - Route handlers are called when a route matches the request
- - [x] `Response Handlers` 
- - [x] `Error Handlers`
+ - [x] `Response Handlers` - Response handlers are called after the last route handler is called
+ - [x] `Error Handlers` - Error handlers are called when a route handler creates a Throwable
+ - [x] `Parent-Child Routes` - You can create parent-child routes for grouping routes
 
 # Basic Usage
 ## Install
@@ -233,7 +234,7 @@ However, there are protected properties that you can't override which are:
  - `$handlers` - Optional route handlers. These can be any callable function, class static method, or object method call which accepts a `RouterState $state` object as a parameter.
 
 ### Serve files from a forbidden directory
-Static handler can serve files from a forbidden directory that can't be accessed by the client directly because of the web server configuration (e.g. Apache's `deny from all` directive).
+Static handler can serve files from a forbidden directory that can't be accessed by the client browser directly because of the web server configuration (e.g. Apache's `deny from all` directive). As long as the system user of the web server application have access to the directory, the static handler can serve the files.
 ```php
 $r->static('/', '/');
 ```
