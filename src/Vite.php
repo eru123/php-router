@@ -83,7 +83,7 @@ class Vite
             . '<body>'
             . '<div id="${app_id}"></div>'
             . '${body}'
-            . '<script type="module" src="${base_uri}/${entry}"></script>'
+            . '<script type="module" src="${base_uri}/${entry}" crossorigin="anonymous"></script>'
             . '</body>'
             . '</html>';
     }
