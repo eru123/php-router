@@ -236,7 +236,7 @@ class Vite
             $tpl_data['entry'] = $manifest[$entry]['file'];
 
             foreach ($css as $css_file) {
-                $tpl_data['head'] .= '<link rel="stylesheet" href="' . $tpl_data['base_uri'] . '/' . $css_file . '">';
+                $tpl_data['head'] .= '<link rel="stylesheet" href="' . $tpl_data['base_uri'] . '/' . $css_file . '" crossorigin="anonymous">';
             }
         }
 
